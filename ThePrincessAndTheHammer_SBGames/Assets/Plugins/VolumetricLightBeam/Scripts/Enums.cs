@@ -1,12 +1,5 @@
 ﻿namespace VLB
 {
-    public enum FeatureEnabledColorGradient
-    {
-        Off,        // Do not support having a gradient as color
-        HighOnly,   // Support gradient color only for devices with Shader Level = 35 or higher
-        HighAndLow  // Support gradient color for all devices
-    };
-
     public enum ColorMode
     {
         Flat,       // Apply a flat/plain/single color
@@ -25,14 +18,6 @@
         Additive,
         SoftAdditive,
         TraditionalTransparency,
-    }
-
-    public enum ShaderAccuracy
-    {
-        /// <summary> Default accuracy: a lot of computation are done on the vertex shader to maximize performance. </summary>
-        Fast,
-        /// <summary> Higher accuracy: most of the computation are done on the pixel shader to maximize graphical quality at some performance cost. </summary>
-        High,
     }
 
     public enum NoiseMode
@@ -55,10 +40,8 @@
     {
         /// <summary> Unity's built-in Render Pipeline. </summary>
         BuiltIn,
-        /// <summary> Use the Universal Render Pipeline. </summary>
-        URP,
-        /// <summary> Use the High Definition Render Pipeline. </summary>
-        HDRP,
+        /// <summary> Use a Scriptable Render Pipeline (HDRP, LWRP or a custom one) with Core RP 4.0.0 or higher. </summary>
+        SRP_4_0_0_or_higher,
     }
 
     public enum RenderingMode
@@ -69,8 +52,6 @@
         SinglePass,
         /// <summary> Dynamically batch multiple beams to combine and reduce draw calls. </summary>
         GPUInstancing,
-        /// <summary> Use the SRP Batcher to automatically batch multiple beams and reduce draw calls. Only available when using SRP. </summary>
-        SRPBatcher,
     }
 
     public enum RenderQueue
@@ -97,40 +78,26 @@
         Overlay = 4000,
     }
 
-    public enum Dimensions
+    public enum OccluderDimensions
     {
-        /// <summary> 3D </summary>
-        Dim3D,
+        /// <summary> the beam will react against 3D Occluders. </summary>
+        Occluders3D,
 
-        /// <summary> 2D </summary>
-        Dim2D
+        /// <summary> the beam will react against 2D Occluders. This is useful when using the beams with 2D objects (such as 2D Sprites). </summary>
+        Occluders2D
     }
 
     public enum PlaneAlignment
     {
         /// <summary>Align the plane to the surface normal which blocks the beam. Works better for large occluders such as floors and walls.</summary>
         Surface,
-        /// <summary>Keep the plane aligned with the beam direction. Works better with more complex occluders or with corners.</summary>
+        /// <summary>Keep the plane aligned with the beam direction. Workds better with more complex occluders or with corners.</summary>
         Beam
     }
 
-    [System.Flags]
-    public enum DynamicOcclusionUpdateRate
+    public enum FadeOutCameraMode
     {
-        Never = 1 << 0,
-        OnEnable = 1 << 1,
-        OnBeamMove = 1 << 2,
-        EveryXFrames = 1 << 3,
-        OnBeamMoveAndEveryXFrames = OnBeamMove | EveryXFrames,
+        MainCamera,
+        CustomObject
     }
-
-    public enum ParticlesDirection
-    {
-        /// <summary> Random direction. </summary>
-        Random,
-        /// <summary> Particles follow the velicity direction in local space (Z is along the beam). </summary>
-        LocalSpace,
-        /// <summary> Particles follow the velicity direction in world space. </summary>
-        WorldSpace
-    };
 }

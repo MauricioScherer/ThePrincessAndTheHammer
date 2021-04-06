@@ -2,6 +2,6 @@
 {
     public static class Version
     {
-        public const int Current = 1930;
+        public const int Current = 1750;
     }
 }

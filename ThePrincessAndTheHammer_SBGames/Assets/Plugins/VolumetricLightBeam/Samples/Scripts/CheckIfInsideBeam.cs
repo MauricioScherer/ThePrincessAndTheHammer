@@ -35,17 +35,13 @@ namespace VLB_Samples
 
         void OnTriggerStay(Collider trigger)
         {
-            var dynamicOcclusion = trigger.GetComponent<VLB.DynamicOcclusionRaycasting>();
+            var beam = trigger.GetComponent<VLB.VolumetricLightBeam>();
 
-            if (dynamicOcclusion)
+            if (beam)
             {
                 // This GameObject is inside the beam's TriggerZone.
                 // Make sure it's not hidden by an occluder
-                isInsideBeam = !dynamicOcclusion.IsColliderHiddenByDynamicOccluder(m_Collider);
-            }
-            else
-            {
-                isInsideBeam = true;
+                isInsideBeam = !beam.IsColliderHiddenByDynamicOccluder(m_Collider);
             }
         }
     }

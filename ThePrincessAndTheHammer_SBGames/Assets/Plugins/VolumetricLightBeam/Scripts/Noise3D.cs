@@ -79,17 +79,17 @@ namespace VLB
                 ms_NoiseTexture = LoadTexture3D(Config.Instance.noise3DData, Config.Instance.noise3DSize);
                 if(ms_NoiseTexture)
                     ms_NoiseTexture.hideFlags = kHideFlags;
-
-                Shader.SetGlobalTexture(ShaderProperties.GlobalNoiseTex3D, ms_NoiseTexture);
-                Shader.SetGlobalFloat(ShaderProperties.GlobalNoiseCustomTime, -1.0f);
             }
+
+            Shader.SetGlobalTexture("_VLB_NoiseTex3D", ms_NoiseTexture);
+            Shader.SetGlobalVector("_VLB_NoiseGlobal", Config.Instance.globalNoiseParam);
         }
 
         static Texture3D LoadTexture3D(TextAsset textData, int size)
         {
             if (textData == null)
             {
-                Debug.LogError("Fail to open Noise 3D Data");
+                Debug.LogErrorFormat("Fail to open Noise 3D Data");
                 return null;
             }
 

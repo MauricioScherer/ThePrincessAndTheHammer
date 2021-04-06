@@ -7,7 +7,7 @@ namespace VLB
     {
         public static Mesh Get()
         {
-            var needDoubleSided = Config.Instance.requiresDoubleSidedMesh;
+            var needDoubleSided = Config.Instance.useSinglePassShader;
 
             if (ms_Mesh == null
              || ms_DoubleSided != needDoubleSided)

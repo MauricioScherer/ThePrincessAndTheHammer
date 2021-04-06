@@ -7,6 +7,16 @@
 #define VLB_SRP_SUPPORT // Comment this to disable SRP support
 #endif
 
+#if VLB_SRP_SUPPORT
+#if UNITY_2019_1_OR_NEWER
+using AliasCurrentPipeline = UnityEngine.Rendering.RenderPipelineManager;
+using AliasCameraEvents = UnityEngine.Rendering.RenderPipelineManager;
+#else
+using AliasCurrentPipeline = UnityEngine.Experimental.Rendering.RenderPipelineManager;
+using AliasCameraEvents = UnityEngine.Experimental.Rendering.RenderPipeline;
+#endif // UNITY_2019_1_OR_NEWER
+#endif // VLB_SRP_SUPPORT
+
 using UnityEngine;
 using System.Collections;
 
@@ -17,14 +27,12 @@ namespace VLB
     [AddComponentMenu("")] // hide it from Component search
     [ExecuteInEditMode]
     [HelpURL(Consts.HelpUrlBeam)]
-    public class BeamGeometry : MonoBehaviour, MaterialModifier.Interface
+    public class BeamGeometry : MonoBehaviour
     {
         VolumetricLightBeam m_Master = null;
         Matrix4x4 m_ColorGradientMatrix;
         MeshType m_CurrentMeshType = MeshType.Shared;
         Material m_CustomMaterial = null;
-        MaterialModifier.Callback m_MaterialModifierCallback = null;
-        Coroutine m_CoFadeOut = null;
 
         public MeshRenderer meshRenderer { get; private set; }
         public MeshFilter meshFilter { get; private set; }
@@ -48,8 +56,6 @@ namespace VLB
             set { meshRenderer.sortingOrder = value; }
         }
 
-        public bool _INTERNAL_IsFadeOutCoroutineRunning { get { return m_CoFadeOut != null; } }
-
         float ComputeFadeOutFactor(Transform camTransform)
         {
             if (m_Master.isFadeOutEnabled)
@@ -72,7 +78,6 @@ namespace VLB
             }
 
             SetFadeOutFactorProp(1.0f);
-            m_CoFadeOut = null;
         }
 
         void ComputeFadeOutFactor()
@@ -81,7 +86,16 @@ namespace VLB
             if (camTransform)
             {
                 float fadeOutFactor = ComputeFadeOutFactor(camTransform);
-                SetFadeOutFactorProp(fadeOutFactor);
+
+                if (fadeOutFactor > 0)
+                {
+                    meshRenderer.enabled = true;
+                    SetFadeOutFactorProp(fadeOutFactor);
+                }
+                else
+                {
+                    meshRenderer.enabled = false;
+                }
             }
             else
             {
@@ -91,35 +105,22 @@ namespace VLB
 
         void SetFadeOutFactorProp(float value)
         {
-            if (value > 0)
-            {
-                meshRenderer.enabled = true;
-
-                MaterialChangeStart();
-                SetMaterialProp(ShaderProperties.FadeOutFactor, value);
-                MaterialChangeStop();
-            }
-            else
-            {
-                meshRenderer.enabled = false;
-            }
+            MaterialChangeStart();
+            SetMaterialProp(ShaderProperties.FadeOutFactor, value);
+            MaterialChangeStop();
         }
 
-        public void RestartFadeOutCoroutine()
+        void RestartFadeOutCoroutine()
         {
         #if UNITY_EDITOR
             if (Application.isPlaying)
         #endif
             {
-                if (m_CoFadeOut != null)
-                {
-                    StopCoroutine(m_CoFadeOut);
-                    m_CoFadeOut = null;
-                }
+                StopAllCoroutines();
 
                 if (m_Master && m_Master.isFadeOutEnabled)
                 {
-                    m_CoFadeOut = StartCoroutine(CoUpdateFadeOut());
+                    StartCoroutine(CoUpdateFadeOut());
                 }
             }
         }
@@ -141,12 +142,15 @@ namespace VLB
         }
 
 #if VLB_SRP_SUPPORT
-        Camera m_CurrentCameraRenderingSRP = null;
+        static bool IsUsingCustomRenderPipeline()
+        {
+            return AliasCurrentPipeline.currentPipeline != null || UnityEngine.Rendering.GraphicsSettings.renderPipelineAsset != null;
+        }
 
         void OnDisable()
         {
-            SRPHelper.UnregisterOnBeginCameraRendering(OnBeginCameraRenderingSRP);
-            m_CurrentCameraRenderingSRP = null;
+            if (IsUsingCustomRenderPipeline())
+                AliasCameraEvents.beginCameraRendering -= OnBeginCameraRendering;
         }
 
         public static bool isCustomRenderPipelineSupported { get { return true; } }
@@ -154,45 +158,37 @@ namespace VLB
         public static bool isCustomRenderPipelineSupported { get { return false; } }
 #endif
 
-        bool shouldUseGPUInstancedMaterial
-        { get {
-            return m_Master._INTERNAL_DynamicOcclusionMode != MaterialManager.DynamicOcclusion.DepthTexture // sampler cannot be passed to shader as instanced property
-                && Config.Instance.actualRenderingMode == RenderingMode.GPUInstancing;
-        }}
-
         void OnEnable()
         {
             // When a GAO is disabled, all its coroutines are killed, so renable them on OnEnable.
             RestartFadeOutCoroutine();
 
 #if VLB_SRP_SUPPORT
-            SRPHelper.RegisterOnBeginCameraRendering(OnBeginCameraRenderingSRP);
+            if (IsUsingCustomRenderPipeline())
+                AliasCameraEvents.beginCameraRendering += OnBeginCameraRendering;
 #endif
         }
 
         public void Initialize(VolumetricLightBeam master)
         {
-            Debug.Assert(master != null);
-
-            var customHideFlags = Consts.ProceduralObjectsHideFlags;
+            var hideFlags = Consts.ProceduralObjectsHideFlags;
             m_Master = master;
 
             transform.SetParent(master.transform, false);
 
             meshRenderer = gameObject.GetOrAddComponent<MeshRenderer>();
-            meshRenderer.hideFlags = customHideFlags;
+            meshRenderer.hideFlags = hideFlags;
             meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             meshRenderer.receiveShadows = false;
-            meshRenderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off; // different reflection probes could break batching with GPU Instancing
 #if UNITY_5_4_OR_NEWER
             meshRenderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
 #else
             meshRenderer.useLightProbes = false;
 #endif
 
-            if (!shouldUseGPUInstancedMaterial)
+            if (Config.Instance.actualRenderingMode != RenderingMode.GPUInstancing)
             {
-                m_CustomMaterial = MaterialManager.NewMaterialTransient(gpuInstanced:false);
+                m_CustomMaterial = MaterialManager.NewMaterial(gpuInstanced:false);
                 ApplyMaterial();
             }
 
@@ -204,13 +200,15 @@ namespace VLB
             sortingOrder = m_Master.sortingOrder;
 
             meshFilter = gameObject.GetOrAddComponent<MeshFilter>();
-            meshFilter.hideFlags = customHideFlags;
+            meshFilter.hideFlags = hideFlags;
 
-            gameObject.hideFlags = customHideFlags;
+            gameObject.hideFlags = hideFlags;
 
 #if UNITY_EDITOR
-            UnityEditor.GameObjectUtility.SetStaticEditorFlags(gameObject, master.GetStaticEditorFlagsForSubObjects());
-            gameObject.SetSameSceneVisibilityStatesThan(master.gameObject);
+            // Apply the same static flags to the BeamGeometry than the VLB GAO
+            var flags = UnityEditor.GameObjectUtility.GetStaticEditorFlags(master.gameObject);
+            flags &= ~(UnityEditor.StaticEditorFlags.ContributeGI); // remove the Lightmap static flag since it will generate error messages when selecting the BeamGeometry GAO in the editor
+            UnityEditor.GameObjectUtility.SetStaticEditorFlags(gameObject, flags);
 #endif
 
             RestartFadeOutCoroutine();
@@ -242,7 +240,7 @@ namespace VLB
             {
                 case MeshType.Custom:
                     {
-                        coneMesh = MeshGenerator.GenerateConeZ_Radius(1f, 1f, 1f, m_Master.geomCustomSides, m_Master.geomCustomSegments, m_Master.geomCap, Config.Instance.requiresDoubleSidedMesh);
+                        coneMesh = MeshGenerator.GenerateConeZ_Radius(1f, 1f, 1f, m_Master.geomCustomSides, m_Master.geomCustomSegments, m_Master.geomCap, Config.Instance.useSinglePassShader);
                         coneMesh.hideFlags = Consts.ProceduralObjectsHideFlags;
                         meshFilter.mesh = coneMesh;
                         break;
@@ -263,22 +261,19 @@ namespace VLB
             UpdateMaterialAndBounds();
         }
 
-        Vector3 ComputeLocalMatrix()
+        void ComputeLocalMatrix()
         {
             // In the VS, we compute the vertices so the whole beam fits into a fixed 2x2x1 box.
             // We have to apply some scaling to get the proper beam size.
             // This way we have the proper bounds without having to recompute specific bounds foreach beam.
             var maxRadius = Mathf.Max(m_Master.coneRadiusStart, m_Master.coneRadiusEnd);
-            transform.localScale = new Vector3(maxRadius, maxRadius, m_Master.maxGeometryDistance);
-            transform.localRotation = m_Master.beamInternalLocalRotation;
-
-            return transform.localScale;
+            transform.localScale = new Vector3(maxRadius, maxRadius, m_Master.fallOffEnd);
         }
 
         bool isNoiseEnabled { get { return m_Master.isNoiseEnabled && m_Master.noiseIntensity > 0f && Noise3D.isSupported; } } // test Noise3D.isSupported the last
-
+        bool isClippingPlaneEnabled { get { return dynamicOcclusion ? (dynamicOcclusion.planeEquationWS.normal.sqrMagnitude > 0) : false; } }
 #pragma warning disable 0162
-        bool isDepthBlendEnabled { get { return BatchingHelper.forceEnableDepthBlend || m_Master.depthBlendDistance > 0f; } }
+        bool isDepthBlendEnabled { get { return GpuInstancing.forceEnableDepthBlend || m_Master.depthBlendDistance > 0f; } }
 #pragma warning restore 0162
 
         bool ApplyMaterial()
@@ -300,13 +295,11 @@ namespace VLB
                 noise3D = isNoiseEnabled ? MaterialManager.Noise3D.On : MaterialManager.Noise3D.Off,
                 depthBlend = isDepthBlendEnabled ? MaterialManager.DepthBlend.On : MaterialManager.DepthBlend.Off,
                 colorGradient = colorGradient,
-                dynamicOcclusion = m_Master._INTERNAL_DynamicOcclusionMode_Runtime,
-                meshSkewing = m_Master.hasMeshSkewing ? MaterialManager.MeshSkewing.On : MaterialManager.MeshSkewing.Off,
-                shaderAccuracy = (m_Master.shaderAccuracy == ShaderAccuracy.Fast) ? MaterialManager.ShaderAccuracy.Fast : MaterialManager.ShaderAccuracy.High
+                clippingPlane = isClippingPlaneEnabled ? MaterialManager.ClippingPlane.On : MaterialManager.ClippingPlane.Off
             };
 
             Material mat = null;
-            if (!shouldUseGPUInstancedMaterial)
+            if (Config.Instance.actualRenderingMode != RenderingMode.GPUInstancing)
             {
                 mat = m_CustomMaterial;
                 if(mat)
@@ -321,7 +314,7 @@ namespace VLB
             return mat != null;
         }
 
-        public void SetMaterialProp(int nameID, float value)
+        void SetMaterialProp(int nameID, float value)
         {
             if (m_CustomMaterial)
                 m_CustomMaterial.SetFloat(nameID, value);
@@ -329,7 +322,7 @@ namespace VLB
                 MaterialManager.materialPropertyBlock.SetFloat(nameID, value);
         }
 
-        public void SetMaterialProp(int nameID, Vector4 value)
+        void SetMaterialProp(int nameID, Vector4 value)
         {
             if (m_CustomMaterial)
                 m_CustomMaterial.SetVector(nameID, value);
@@ -337,7 +330,7 @@ namespace VLB
                 MaterialManager.materialPropertyBlock.SetVector(nameID, value);
         }
 
-        public void SetMaterialProp(int nameID, Color value)
+        void SetMaterialProp(int nameID, Color value)
         {
             if (m_CustomMaterial)
                 m_CustomMaterial.SetColor(nameID, value);
@@ -345,20 +338,12 @@ namespace VLB
                 MaterialManager.materialPropertyBlock.SetColor(nameID, value);
         }
 
-        public void SetMaterialProp(int nameID, Matrix4x4 value)
+        void SetMaterialProp(int nameID, Matrix4x4 value)
         {
             if (m_CustomMaterial)
                 m_CustomMaterial.SetMatrix(nameID, value);
             else
                 MaterialManager.materialPropertyBlock.SetMatrix(nameID, value);
-        }
-
-        public void SetMaterialProp(int nameID, Texture value)
-        {
-            if (m_CustomMaterial)
-                m_CustomMaterial.SetTexture(nameID, value);
-            else
-                Debug.LogError("Setting a Texture property to a GPU instanced material is not supported");
         }
 
         void MaterialChangeStart()
@@ -373,19 +358,12 @@ namespace VLB
                 meshRenderer.SetPropertyBlock(MaterialManager.materialPropertyBlock);
         }
 
-        public void SetDynamicOcclusionCallback(string shaderKeyword, MaterialModifier.Callback cb)
+        void SendMaterialClippingPlaneProp()
         {
-            m_MaterialModifierCallback = cb;
-
-            if (m_CustomMaterial)
-            {
-                m_CustomMaterial.SetKeywordEnabled(shaderKeyword, cb != null);
-
-                if (cb != null)
-                    cb(this);
-            }
-            else
-                UpdateMaterialAndBounds();
+            Debug.Assert(dynamicOcclusion != null);
+            var planeWS = dynamicOcclusion.planeEquationWS;
+            SetMaterialProp(ShaderProperties.ClippingPlaneWS, new Vector4(planeWS.normal.x, planeWS.normal.y, planeWS.normal.z, planeWS.distance));
+            SetMaterialProp(ShaderProperties.ClippingPlaneProps, dynamicOcclusion.fadeDistanceToPlane);
         }
 
         public void UpdateMaterialAndBounds()
@@ -399,10 +377,9 @@ namespace VLB
 
             MaterialChangeStart();
             {
-                if (m_CustomMaterial == null)
+                if (isClippingPlaneEnabled && m_CustomMaterial == null)
                 {
-                    if(m_MaterialModifierCallback != null)
-                        m_MaterialModifierCallback(this);
+                    SendMaterialClippingPlaneProp();
                 }
 
                 float slopeRad = (m_Master.coneAngle * Mathf.Deg2Rad) / 2; // use coneAngle (instead of spotAngle) which is more correct with the geometry
@@ -417,7 +394,7 @@ namespace VLB
                 float nonNullApex = Mathf.Sign(m_Master.coneApexOffsetZ) * Mathf.Max(Mathf.Abs(m_Master.coneApexOffsetZ), kMinApexOffset);
                 SetMaterialProp(ShaderProperties.ConeApexOffsetZ, nonNullApex);
 
-                if (m_Master.usedColorMode == ColorMode.Flat)
+                if (m_Master.colorMode == ColorMode.Flat)
                 {
                     SetMaterialProp(ShaderProperties.ColorFlat, m_Master.color);
                 }
@@ -428,19 +405,16 @@ namespace VLB
                     // pass the gradient matrix in OnWillRenderObject()
                 }
 
-                float intensityInside, intensityOutside;
-                m_Master.GetInsideAndOutsideIntensity(out intensityInside, out intensityOutside);
-                SetMaterialProp(ShaderProperties.AlphaInside, intensityInside);
-                SetMaterialProp(ShaderProperties.AlphaOutside, intensityOutside);
+                SetMaterialProp(ShaderProperties.AlphaInside, m_Master.intensityInside);
+                SetMaterialProp(ShaderProperties.AlphaOutside, m_Master.intensityOutside);
                 SetMaterialProp(ShaderProperties.AttenuationLerpLinearQuad, m_Master.attenuationLerpLinearQuad);
-                SetMaterialProp(ShaderProperties.DistanceFallOff, new Vector3(m_Master.fallOffStart, m_Master.fallOffEnd, m_Master.maxGeometryDistance));
+                SetMaterialProp(ShaderProperties.DistanceFadeStart, m_Master.fallOffStart);
+                SetMaterialProp(ShaderProperties.DistanceFadeEnd, m_Master.fallOffEnd);
                 SetMaterialProp(ShaderProperties.DistanceCamClipping, m_Master.cameraClippingDistance);
                 SetMaterialProp(ShaderProperties.FresnelPow, Mathf.Max(0.001f, m_Master.fresnelPow)); // no pow 0, otherwise will generate inf fresnel and issues on iOS
                 SetMaterialProp(ShaderProperties.GlareBehind, m_Master.glareBehind);
                 SetMaterialProp(ShaderProperties.GlareFrontal, m_Master.glareFrontal);
                 SetMaterialProp(ShaderProperties.DrawCap, m_Master.geomCap ? 1 : 0);
-                SetMaterialProp(ShaderProperties.TiltVector, m_Master.tiltFactor);
-                SetMaterialProp(ShaderProperties.AdditionalClippingPlaneWS, m_Master.additionalClippingPlane);
 
                 if (isDepthBlendEnabled)
                 {
@@ -450,55 +424,27 @@ namespace VLB
                 if (isNoiseEnabled)
                 {
                     Noise3D.LoadIfNeeded();
+                    SetMaterialProp(ShaderProperties.NoiseLocal, new Vector4(
+                        m_Master.noiseVelocityLocal.x,
+                        m_Master.noiseVelocityLocal.y,
+                        m_Master.noiseVelocityLocal.z,
+                        m_Master.noiseScaleLocal));
 
-                    var noiseVelocity = m_Master.noiseVelocityUseGlobal ? Config.Instance.globalNoiseVelocity : m_Master.noiseVelocityLocal;
-                    var noiseScale = m_Master.noiseScaleUseGlobal ? Config.Instance.globalNoiseScale : m_Master.noiseScaleLocal;
-
-                    SetMaterialProp(ShaderProperties.NoiseVelocityAndScale, new Vector4(
-                        noiseVelocity.x,
-                        noiseVelocity.y,
-                        noiseVelocity.z,
-                        noiseScale));
-
-                    SetMaterialProp(ShaderProperties.NoiseParam, new Vector2(
+                    SetMaterialProp(ShaderProperties.NoiseParam, new Vector4(
                         m_Master.noiseIntensity,
+                        m_Master.noiseVelocityUseGlobal ? 1f : 0f,
+                        m_Master.noiseScaleUseGlobal ? 1f : 0f,
                         m_Master.noiseMode == NoiseMode.WorldSpace ? 0f : 1f));
                 }
 
-                var localScale = ComputeLocalMatrix(); // compute matrix before sending it to the shader
-
-                if (m_Master.hasMeshSkewing)
-                {
-                    var localForwardDirectionNormalized = m_Master.skewingLocalForwardDirectionNormalized;
-                    SetMaterialProp(ShaderProperties.LocalForwardDirection, localForwardDirectionNormalized);
-
-                    if (coneMesh != null) // coneMesh can be null few frames with Dynamic Occlusion & GPU Instancing
-                    {
-                        var localForwardDirectionN = localForwardDirectionNormalized;
-                        localForwardDirectionN /= localForwardDirectionN.z;
-                        localForwardDirectionN *= m_Master.fallOffEnd;
-                        localForwardDirectionN.x /= localScale.x;
-                        localForwardDirectionN.y /= localScale.y;
-
-                        var bounds = MeshGenerator.ComputeBounds(1f, 1f, 1f);
-                        var min = bounds.min;
-                        var max = bounds.max;
-
-                        if (localForwardDirectionN.x > 0.0f) max.x += localForwardDirectionN.x;
-                        else min.x += localForwardDirectionN.x;
-
-                        if (localForwardDirectionN.y > 0.0f) max.y += localForwardDirectionN.y;
-                        else min.y += localForwardDirectionN.y;
-
-                        bounds.min = min;
-                        bounds.max = max;
-                        coneMesh.bounds = bounds;
-                    }
-                }
+                ComputeLocalMatrix(); // compute matrix before sending it to the shader
 
 #if VLB_SRP_SUPPORT
-                // This update is to make QA test 'ReflectionObliqueProjection' pass
-                UpdateMatricesPropertiesForGPUInstancingSRP();
+                if (IsUsingCustomRenderPipeline() && Config.Instance.actualRenderingMode == RenderingMode.GPUInstancing)
+                {
+                    SetMaterialProp(ShaderProperties.LocalToWorldMatrix, transform.localToWorldMatrix);
+                    SetMaterialProp(ShaderProperties.WorldToLocalMatrix, transform.worldToLocalMatrix);
+                }
 #endif
             }
             MaterialChangeStop();
@@ -523,59 +469,59 @@ namespace VLB
 #endif
         }
 
-#if VLB_SRP_SUPPORT
-        void UpdateMatricesPropertiesForGPUInstancingSRP()
+        DynamicOcclusion _dynamicOcclusion;
+
+        public DynamicOcclusion dynamicOcclusion
         {
-            if (SRPHelper.IsUsingCustomRenderPipeline() && Config.Instance.actualRenderingMode == RenderingMode.GPUInstancing)
+            get { return _dynamicOcclusion; }
+            set
             {
-                SetMaterialProp(ShaderProperties.LocalToWorldMatrix, transform.localToWorldMatrix);
-                SetMaterialProp(ShaderProperties.WorldToLocalMatrix, transform.worldToLocalMatrix);
+                _dynamicOcclusion = value;
+                if (m_CustomMaterial)
+                {
+                    bool hasDynOcclusion = _dynamicOcclusion != null;
+                    m_CustomMaterial.SetKeywordEnabled("VLB_CLIPPING_PLANE", hasDynOcclusion);
+                    if (hasDynOcclusion)
+                        SendMaterialClippingPlaneProp();
+                }
+                else
+                    UpdateMaterialAndBounds();
             }
         }
 
+#if VLB_SRP_SUPPORT
     #if UNITY_2019_1_OR_NEWER
-        void OnBeginCameraRenderingSRP(UnityEngine.Rendering.ScriptableRenderContext context, Camera cam)
+        void OnBeginCameraRendering(UnityEngine.Rendering.ScriptableRenderContext context, Camera cam)
     #else
-        void OnBeginCameraRenderingSRP(Camera cam)
+        void OnBeginCameraRendering(Camera cam)
     #endif
         {
-            m_CurrentCameraRenderingSRP = cam;
+            UpdateCameraRelatedProperties(cam);
         }
 #endif
 
         void OnWillRenderObject()
         {
-            Camera currentCam = null;
-
 #if VLB_SRP_SUPPORT
-            if (SRPHelper.IsUsingCustomRenderPipeline())
-            {
-                currentCam = m_CurrentCameraRenderingSRP;
-            }
-            else
+            if (!IsUsingCustomRenderPipeline())
 #endif
             {
-                currentCam = Camera.current;
+                var cam = Camera.current;
+                if (cam != null)
+                    UpdateCameraRelatedProperties(cam);
             }
-
-            OnWillCameraRenderThisBeam(currentCam);
         }
 
-        void OnWillCameraRenderThisBeam(Camera cam)
+        static bool IsEditorCamera(Camera cam)
         {
-            if (m_Master && cam)
-            {
-                if (
 #if UNITY_EDITOR
-                    Utils.IsEditorCamera(cam) || // make sure to call UpdateCameraRelatedProperties for editor scene camera 
-#endif
-                    cam.enabled)    // prevent from doing stuff when we render from a previous DynamicOcclusionDepthBuffer's DepthCamera, because the DepthCamera are disabled 
-                {
-                    Debug.Assert(cam.GetComponentInParent<VolumetricLightBeam>() == null);
-                    UpdateCameraRelatedProperties(cam);
-                    m_Master._INTERNAL_OnWillCameraRenderThisBeam(cam);
-                }
+            var sceneView = UnityEditor.SceneView.currentDrawingSceneView;
+            if (sceneView)
+            {
+                return cam == sceneView.camera;
             }
+#endif
+            return false;
         }
 
         void UpdateCameraRelatedProperties(Camera cam)
@@ -585,17 +531,19 @@ namespace VLB
                 MaterialChangeStart();
                 {
                     var camPosOS = m_Master.transform.InverseTransformPoint(cam.transform.position);
-
                     var camForwardVectorOSN = transform.InverseTransformDirection(cam.transform.forward).normalized;
                     float camIsInsideBeamFactor = cam.orthographic ? -1f : m_Master.GetInsideBeamFactorFromObjectSpacePos(camPosOS);
                     SetMaterialProp(ShaderProperties.CameraParams, new Vector4(camForwardVectorOSN.x, camForwardVectorOSN.y, camForwardVectorOSN.z, camIsInsideBeamFactor));
 
-#if VLB_SRP_SUPPORT
-                    // This update is to be able to move beams without trackChangesDuringPlaytime enabled with SRP & GPU Instancing
-                    UpdateMatricesPropertiesForGPUInstancingSRP();
+#if UNITY_2017_3_OR_NEWER && VLB_SRP_SUPPORT // ScalableBufferManager introduced in Unity 2017.3
+                    if (IsUsingCustomRenderPipeline())
+                    {
+                        var bufferSize = cam.allowDynamicResolution ? new Vector2(ScalableBufferManager.widthScaleFactor, ScalableBufferManager.heightScaleFactor) : Vector2.one;
+                        SetMaterialProp(ShaderProperties.CameraBufferSizeSRP, bufferSize);
+                    }
 #endif
 
-                    if (m_Master.usedColorMode == ColorMode.Gradient)
+                    if (m_Master.colorMode == ColorMode.Gradient)
                     {
                         // Send the gradient matrix every frame since it's not a shader's property
                         SetMaterialProp(ShaderProperties.ColorGradientMatrix, m_ColorGradientMatrix);
@@ -609,9 +557,5 @@ namespace VLB
 #endif
             }
         }
-
-#if UNITY_EDITOR
-        public bool _EDITOR_IsUsingCustomMaterial { get { return m_CustomMaterial != null; } }
-#endif
     }
 }

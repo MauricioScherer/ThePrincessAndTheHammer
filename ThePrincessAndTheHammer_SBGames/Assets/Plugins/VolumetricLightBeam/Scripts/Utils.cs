@@ -60,38 +60,34 @@ namespace VLB
         public static Vector2 yx(this Vector3 aVector) { return new Vector2(aVector.y, aVector.x); }
         public static Vector2 zx(this Vector3 aVector) { return new Vector2(aVector.z, aVector.x); }
         public static Vector2 zy(this Vector3 aVector) { return new Vector2(aVector.z, aVector.y); }
-        public static bool Approximately(this Vector2 a, Vector2 b, float epsilon = 0.00001f) { return Vector2.SqrMagnitude(a - b) < epsilon; }
-        public static bool Approximately(this Vector3 a, Vector3 b, float epsilon = 0.00001f) { return Vector3.SqrMagnitude(a - b) < epsilon; }
-        public static bool Approximately(this Vector4 a, Vector4 b, float epsilon = 0.00001f) { return Vector4.SqrMagnitude(a - b) < epsilon; }
-        public static Vector4 AsVector4(this Vector3 vec3, float w) { return new Vector4(vec3.x, vec3.y, vec3.z, w); }
-        public static Vector4 PlaneEquation(Vector3 normalizedNormal, Vector3 pt) { return normalizedNormal.AsVector4(-Vector3.Dot(normalizedNormal, pt)); }
 
         public static float GetVolumeCubic(this Bounds self) { return self.size.x * self.size.y * self.size.z; }
         public static float GetMaxArea2D(this Bounds self) { return Mathf.Max(Mathf.Max(self.size.x * self.size.y, self.size.y * self.size.z), self.size.x * self.size.z); }
 
         public static Color Opaque(this Color self) { return new Color(self.r, self.g, self.b, 1f); }
 
-#if UNITY_EDITOR
-        public static void GizmosDrawPlane(Vector3 normal, Vector3 position, Color color, Matrix4x4 mat, float size = 1f, float normalLength = 0.0f)
+        public static void GizmosDrawPlane(Vector3 normal, Vector3 position, Color color, float size = 1f)
         {
-            normal = normal.normalized;
-            var prevMat = UnityEditor.Handles.matrix;
-            var prevColor = UnityEditor.Handles.color;
+            var v3 = Vector3.Cross(normal, Mathf.Abs(Vector3.Dot(normal, Vector3.forward)) < 0.999f ? Vector3.forward : Vector3.up).normalized * size;
+            var corner0 = position + v3;
+            var corner2 = position - v3;
+            v3 = Quaternion.AngleAxis(90f, normal) * v3;
+            var corner1 = position + v3;
+            var corner3 = position - v3;
 
-            UnityEditor.Handles.matrix = mat;
-            UnityEditor.Handles.color = color;
-            UnityEditor.Handles.RectangleHandleCap(0, position, Quaternion.LookRotation(normal), size, EventType.Repaint);
+            Gizmos.matrix = Matrix4x4.identity;
+            Gizmos.color = color;
 
-            if (normalLength > 0.0f)
-            {
-                UnityEditor.Handles.DrawLine(position, position + normal * normalLength);
-                UnityEditor.Handles.ConeHandleCap(0, position + normal * normalLength, Quaternion.LookRotation(normal), normalLength * 0.25f, EventType.Repaint);
-            }
+            Gizmos.DrawLine(corner0, corner2);
+            Gizmos.DrawLine(corner1, corner3);
+            Gizmos.DrawLine(corner0, corner1);
+            Gizmos.DrawLine(corner1, corner2);
+            Gizmos.DrawLine(corner2, corner3);
+            Gizmos.DrawLine(corner3, corner0);
 
-            UnityEditor.Handles.matrix = prevMat;
-            UnityEditor.Handles.color = prevColor;
+            //Gizmos.color = Color.red;
+            //Gizmos.DrawRay(position, normal);
         }
-#endif // UNITY_EDITOR
 
         // Plane.Translate is not available in Unity 5
         public static Plane TranslateCustom(this Plane plane, Vector3 translation)
@@ -99,14 +95,6 @@ namespace VLB
             plane.distance += Vector3.Dot(translation.normalized, plane.normal) * translation.magnitude;
             return plane;
         }
-
-        // Plane.ClosestPointOnPlaneCustom is not available in Unity 5
-        public static Vector3 ClosestPointOnPlaneCustom(this Plane plane, Vector3 point)
-        {
-            return point - plane.GetDistanceToPoint(point) * plane.normal;
-        }
-
-        public static bool IsAlmostZero(float f) { return Mathf.Abs(f) < 0.001f; }
 
         public static bool IsValid(this Plane plane)
         {
@@ -201,33 +189,6 @@ namespace VLB
             }
 #endif
         }
-
-#if UNITY_EDITOR
-        public static bool IsEditorCamera(Camera cam)
-        {
-            var sceneView = UnityEditor.SceneView.currentDrawingSceneView;
-            if (sceneView)
-            {
-                return cam == sceneView.camera;
-            }
-            return false;
-        }
-
-        public static void SetSameSceneVisibilityStatesThan(this GameObject self, GameObject model)
-        {
-            // SceneVisibilityManager is a feature available from 2019.2, but fixed for transient objects only from 2019.3.14f1
-            // https://issuetracker.unity3d.com/issues/toggling-of-picking-and-visibility-flags-of-a-gameobject-is-ignored-when-gameobject-dot-hideflags-is-set-to-hideflags-dot-dontsave
-    #if UNITY_2019_3_OR_NEWER
-            bool pickingDisabled = UnityEditor.SceneVisibilityManager.instance.IsPickingDisabled(model);
-            if (pickingDisabled) UnityEditor.SceneVisibilityManager.instance.DisablePicking(self, true);
-            else UnityEditor.SceneVisibilityManager.instance.EnablePicking(self, true);
-
-            bool hidden = UnityEditor.SceneVisibilityManager.instance.IsHidden(model);
-            if (hidden) UnityEditor.SceneVisibilityManager.instance.Hide(self, true);
-            else UnityEditor.SceneVisibilityManager.instance.Show(self, true);
-    #endif
-        }
-#endif
     }
 
 }

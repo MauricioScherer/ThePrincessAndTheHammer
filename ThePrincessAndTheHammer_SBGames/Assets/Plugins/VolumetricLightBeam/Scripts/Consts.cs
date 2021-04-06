@@ -8,10 +8,8 @@ namespace VLB
         const string HelpUrlBase = "http://saladgamer.com/vlb-doc/";
         public const string HelpUrlBeam = HelpUrlBase + "comp-lightbeam/";
         public const string HelpUrlDustParticles = HelpUrlBase + "comp-dustparticles/";
-        public const string HelpUrlDynamicOcclusionRaycasting = HelpUrlBase + "comp-dynocclusion-raycasting/";
-        public const string HelpUrlDynamicOcclusionDepthBuffer = HelpUrlBase + "comp-dynocclusion-depthbuffer/";
+        public const string HelpUrlDynamicOcclusion = HelpUrlBase + "comp-dynocclusion/";
         public const string HelpUrlTriggerZone = HelpUrlBase + "comp-triggerzone/";
-        public const string HelpUrlSkewingHandle = HelpUrlBase + "comp-skewinghandle/";
         public const string HelpUrlConfig = HelpUrlBase + "config/";
 
         // INTERNAL
@@ -24,6 +22,7 @@ namespace VLB
 
         public const float IntensityDefault = 1f;
         public const float IntensityMin = 0f;
+        public const float IntensityMax = 8f;
         public const float SpotAngleDefault = 35f;
         public const float SpotAngleMin = 0.1f;
         public const float SpotAngleMax = 179.9f;
@@ -63,35 +62,22 @@ namespace VLB
         public static readonly Vector3 NoiseVelocityDefault = new Vector3(0.07f, 0.18f, 0.05f);
 
         public const BlendingMode BlendingModeDefault = BlendingMode.Additive;
-        public const ShaderAccuracy ShaderAccuracyDefault = ShaderAccuracy.Fast;
-        
-        public const float FadeOutBeginDefault = -150;
-        public const float FadeOutEndDefault = -200;
-        public const Dimensions DimensionsDefault = Dimensions.Dim3D;
-        public static readonly Vector2 TiltDefault = Vector2.zero;
-        public static readonly Vector3 SkewingLocalForwardDirectionDefault = Vector3.forward;
-        public const Transform ClippingPlaneTransformDefault = null;
 
         // DYNAMIC OCCLUSION
-        public static readonly LayerMask DynOcclusionLayerMaskDefault = 1; // Default layer
-        public const float DynOcclusionFadeDistanceToSurfaceDefault = 0.25f;
-        public const DynamicOcclusionUpdateRate DynamicOcclusionUpdateRateDefault = DynamicOcclusionUpdateRate.EveryXFrames;
-        public const int DynOcclusionWaitFramesCountDefault = 3;
-
-        public const Dimensions DynOcclusionRaycastingDimensionsDefault = Dimensions.Dim3D;
-        public const bool DynOcclusionRaycastingConsiderTriggersDefault = false;
-        public const float DynOcclusionRaycastingMinOccluderAreaDefault = 0.0f;
-        public const float DynOcclusionRaycastingMinSurfaceRatioDefault = 0.5f;
-        public const float DynOcclusionRaycastingMinSurfaceRatioMin = 50f;
-        public const float DynOcclusionRaycastingMinSurfaceRatioMax = 100f;
-        public const float DynOcclusionRaycastingMaxSurfaceDotDefault = 0.25f; // around 75 degrees
-        public const float DynOcclusionRaycastingMaxSurfaceAngleMin = 45f;
-        public const float DynOcclusionRaycastingMaxSurfaceAngleMax = 90f;
-        public const PlaneAlignment DynOcclusionRaycastingPlaneAlignmentDefault = PlaneAlignment.Surface;
-        public const float DynOcclusionRaycastingPlaneOffsetDefault = 0.1f;
-
-        public const int DynOcclusionDepthBufferDepthMapResolutionDefault = 32;
-        public const bool DynOcclusionDepthBufferOcclusionCullingDefault = true;
+        public const OccluderDimensions DynOcclusionDimensionsDefault = OccluderDimensions.Occluders3D;
+        public static readonly LayerMask DynOcclusionLayerMaskDefault = -1;
+        public const bool DynOcclusionConsiderTriggersDefault = false;
+        public const float DynOcclusionMinOccluderAreaDefault = 0.0f;
+        public const int DynOcclusionWaitFrameCountDefault = 3;
+        public const float DynOcclusionMinSurfaceRatioDefault = 0.5f;
+        public const float DynOcclusionMinSurfaceRatioMin = 50f;
+        public const float DynOcclusionMinSurfaceRatioMax = 100f;
+        public const float DynOcclusionMaxSurfaceDotDefault = 0.25f; // around 75 degrees
+        public const float DynOcclusionMaxSurfaceAngleMin = 45f;
+        public const float DynOcclusionMaxSurfaceAngleMax = 90f;
+        public const PlaneAlignment DynOcclusionPlaneAlignmentDefault = PlaneAlignment.Surface;
+        public const float DynOcclusionPlaneOffsetDefault = 0.1f;
+        public const float DynOcclusionFadeDistanceToPlaneDefault = 0.25f;
 
         // CONFIG
         public const bool ConfigGeometryOverrideLayerDefault = true;
@@ -100,12 +86,9 @@ namespace VLB
         public const string ConfigFadeOutCameraTagDefault = "MainCamera";
         public const RenderQueue ConfigGeometryRenderQueueDefault = RenderQueue.Transparent;
         public const RenderPipeline ConfigGeometryRenderPipelineDefault = RenderPipeline.BuiltIn;
-        public const RenderingMode ConfigGeometryRenderingModeDefault = RenderingMode.SinglePass;
+        public const RenderingMode ConfigGeometryRenderingModeDefault = RenderingMode.MultiPass;
         public const int ConfigNoise3DSizeDefault = 64;
         public const int ConfigSharedMeshSides = 24;
         public const int ConfigSharedMeshSegments = 5;
-        public const float ConfigDitheringFactor = 0.0f;
-        public const bool ConfigFeatureEnabledDefault = true;
-        public const FeatureEnabledColorGradient ConfigFeatureEnabledColorGradientDefault = FeatureEnabledColorGradient.HighOnly;
     }
 }

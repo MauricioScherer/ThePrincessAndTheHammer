@@ -25,16 +25,19 @@ namespace VLB
         public float size = 0.01f;
 
         /// <summary>
+        /// Beam: particles follows the cone/beam/light direction.
+        /// Random: random direction.
+        /// </summary>
+        public enum Direction { Beam, Random };
+
+        /// <summary>
         /// Direction of the particles.
         /// </summary>
-        public ParticlesDirection direction = ParticlesDirection.Random;
+        public Direction direction = Direction.Random;
 
         /// <summary>
         /// Movement speed of the particles.
         /// </summary>
-        public Vector3 velocity = new Vector3(0.0f, 0.0f, 0.03f);
-
-        [System.Obsolete("Use 'velocity' instead")]
         public float speed = 0.03f;
 
         /// <summary>
@@ -112,6 +115,7 @@ namespace VLB
 #if UNITY_EDITOR
         void OnValidate()
         {
+            speed = Mathf.Max(speed, 0f);
             density = Mathf.Clamp(density, 0f, 1000f);
             cullingMaxDistance = Mathf.Max(cullingMaxDistance, 1f);
 #if PARTICLES_SUPPORTED
@@ -135,8 +139,6 @@ namespace VLB
 
             m_Master = GetComponent<VolumetricLightBeam>();
             Debug.Assert(m_Master);
-            HandleBackwardCompatibility(m_Master._INTERNAL_pluginVersion, Version.Current);
-
             InstantiateParticleSystem();
 
             SetActiveAndPlay();
@@ -145,24 +147,16 @@ namespace VLB
         void InstantiateParticleSystem()
         {
             // If we duplicate (from Editor and Playmode) the VLB, the children are also duplicated (like the dust particles)
-            // we have to make sure to properly destroy them before creating our proper procedural particle instance.
-            var slaves = GetComponentsInChildren<ParticleSystem>(true);
-            for (int i = slaves.Length - 1; i >= 0; --i)
-                DestroyImmediate(slaves[i].gameObject);
+            // we have to make sure to properly detroy them before creating our proper procedural particle instance.
+            var slavers = GetComponentsInChildren<ParticleSystem>(true);
+            for (int i = slavers.Length - 1; i >= 0; --i)
+                DestroyImmediate(slavers[i].gameObject);
 
             m_Particles = Config.Instance.NewVolumetricDustParticles();
 
             if (m_Particles)
             {
-#if UNITY_EDITOR
-                if (m_Master)
-                {
-                    UnityEditor.GameObjectUtility.SetStaticEditorFlags(m_Particles.gameObject, m_Master.GetStaticEditorFlagsForSubObjects());
-                    m_Particles.gameObject.SetSameSceneVisibilityStatesThan(m_Master.gameObject);
-                }
-#endif
                 m_Particles.transform.SetParent(transform, false);
-                m_Particles.transform.localRotation = m_Master.beamInternalLocalRotation;
                 m_Renderer = m_Particles.GetComponent<ParticleSystemRenderer>();
             }
         }
@@ -231,7 +225,7 @@ namespace VLB
                 
                 var startColor = main.startColor;
 
-                if(m_Master.usedColorMode == ColorMode.Flat)
+                if(m_Master.colorMode == ColorMode.Flat)
                 {
                     startColor.mode = ParticleSystemGradientMode.Color;
                     var colorMax = m_Master.color;
@@ -256,20 +250,9 @@ namespace VLB
                 }
                 main.startColor = startColor;
 
-                {
-                    var startSpeed = main.startSpeed;
-                    startSpeed.constant = (direction == ParticlesDirection.Random) ? Mathf.Abs(velocity.z) : 0.0f;
-                    main.startSpeed = startSpeed;
-                }
-
-                {
-                    var velocityOverLifetime = m_Particles.velocityOverLifetime;
-                    velocityOverLifetime.enabled = (direction != ParticlesDirection.Random);
-                    velocityOverLifetime.space = (direction == ParticlesDirection.LocalSpace) ? ParticleSystemSimulationSpace.Local : ParticleSystemSimulationSpace.World;
-                    velocityOverLifetime.xMultiplier = velocity.x;
-                    velocityOverLifetime.yMultiplier = velocity.y;
-                    velocityOverLifetime.zMultiplier = velocity.z;
-                }
+                var startSpeed = main.startSpeed;
+                startSpeed.constant = speed;
+                main.startSpeed = startSpeed;
 
                 main.maxParticles = maxParticles;
 
@@ -285,15 +268,9 @@ namespace VLB
                     shape.radius = Mathf.Lerp(radiusStart, radiusEnd, spawnMinDistance);
 
                     shape.length = coneLength;
-
-                    var localOffset = m_Master.fallOffEnd * spawnMinDistance;
-#if UNITY_2017_1_OR_NEWER
-                    shape.position = new Vector3(0f, 0f, localOffset);
-#else
-                    m_Particles.transform.localPosition = m_Master.beamLocalForward * localOffset;
-#endif
+                    shape.position = new Vector3(0f, 0f, m_Master.fallOffEnd * spawnMinDistance);
                     shape.arc = 360f;
-                    shape.randomDirectionAmount = (direction == ParticlesDirection.Random) ? 1f : 0f;
+                    shape.randomDirectionAmount = (direction == Direction.Random) ? 1f : 0f;
                 }
 
                 var emission = m_Particles.emission;
@@ -309,39 +286,17 @@ namespace VLB
             }
         }
 
-        void HandleBackwardCompatibility(int serializedVersion, int newVersion)
-        {
-            if (serializedVersion == -1) return;            // freshly new spawned entity: nothing to do
-            if (serializedVersion == newVersion) return;    // same version: nothing to do
-
-            if (serializedVersion < 1880)
-            {
-                // Version 1880 changed the order of ParticlesDirection enum and add WorldSpace option
-                if ((int)direction == 0)    direction = (ParticlesDirection)1;
-                else                        direction = (ParticlesDirection)0;
-
-#pragma warning disable 0618
-                // Version 1880 changed from single float speed to 3D velocity vector
-                velocity = new Vector3(0.0f, 0.0f, speed);
-#pragma warning restore 0618
-            }
-
-            Utils.MarkCurrentSceneDirty();
-        }
-
-        #region Culling
+#region Culling
         void UpdateCulling()
         {
             if (m_Particles)
             {
                 bool visible = true;
-                if ((cullingEnabled || m_Master.isFadeOutEnabled) && m_Master.hasGeometry)
+                if (cullingEnabled && m_Master.hasGeometry)
                 {
                     if (mainCamera)
                     {
-                        var maxDist = cullingMaxDistance;
-                        if (m_Master.isFadeOutEnabled) maxDist = Mathf.Min(maxDist, m_Master.fadeOutEnd);
-                        var maxDistSqr = maxDist * maxDist;
+                        var maxDistSqr = cullingMaxDistance * cullingMaxDistance;
                         var distSqr = m_Master.bounds.SqrDistance(mainCamera.transform.position);
                         visible = distSqr <= maxDistSqr;
                     }

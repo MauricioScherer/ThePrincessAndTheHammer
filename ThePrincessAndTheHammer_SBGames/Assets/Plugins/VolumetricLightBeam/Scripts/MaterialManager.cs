@@ -37,25 +37,10 @@ namespace VLB
             Count
         }
 
-        public enum DynamicOcclusion
-        {
-            Off,
-            ClippingPlane,
-            DepthTexture,
-            Count
-        }
-
-        public enum MeshSkewing
+        public enum ClippingPlane
         {
             Off,
             On,
-            Count
-        }
-
-        public enum ShaderAccuracy
-        {
-            Fast,
-            High,
             Count
         }
 
@@ -80,7 +65,7 @@ namespace VLB
             false,  // TraditionalTransparency
         };
 
-        static int kStaticPropertiesCount = (int)BlendingMode.Count * (int)Noise3D.Count * (int)DepthBlend.Count * (int)ColorGradient.Count * (int)DynamicOcclusion.Count * (int)MeshSkewing.Count * (int)ShaderAccuracy.Count;
+        static int kStaticPropertiesCount = (int)BlendingMode.Count * (int)DepthBlend.Count * (int)ColorGradient.Count * (int)ClippingPlane.Count * (int)ClippingPlane.Count;
 
         public class StaticProperties
         {
@@ -88,71 +73,48 @@ namespace VLB
             public Noise3D noise3D;
             public DepthBlend depthBlend;
             public ColorGradient colorGradient;
-            public DynamicOcclusion dynamicOcclusion;
-            public MeshSkewing meshSkewing;
-            public ShaderAccuracy shaderAccuracy;
-
-            int blendingModeID      { get { return (int)blendingMode; } }
-            int noise3DID           { get { return Config.Instance.featureEnabledNoise3D ? (int)noise3D : 0; } }
-            int depthBlendID        { get { return Config.Instance.featureEnabledDepthBlend ? (int)depthBlend : 0; } }
-            int colorGradientID     { get { return Config.Instance.featureEnabledColorGradient != FeatureEnabledColorGradient.Off ? (int)colorGradient : 0; } }
-            int dynamicOcclusionID  { get { return Config.Instance.featureEnabledDynamicOcclusion ? (int)dynamicOcclusion : 0; } }
-            int meshSkewingID       { get { return Config.Instance.featureEnabledMeshSkewing ? (int)meshSkewing : 0; } }
-            int shaderAccuracyID    { get { return Config.Instance.featureEnabledShaderAccuracyHigh ? (int)shaderAccuracy : 0; } }
+            public ClippingPlane clippingPlane;
 
             public int materialID
             {
                 get
                 {
-                    return (((((((blendingModeID)
-                            * (int)Noise3D.Count + noise3DID)
-                            * (int)DepthBlend.Count + depthBlendID)
-                            * (int)ColorGradient.Count + colorGradientID)
-                            * (int)DynamicOcclusion.Count + dynamicOcclusionID)
-                            * (int)MeshSkewing.Count + meshSkewingID)
-                            * (int)ShaderAccuracy.Count + shaderAccuracyID)
+                    return (((((
+                            (int)blendingMode) *
+                            (int)Noise3D.Count + (int)noise3D) *
+                            (int)DepthBlend.Count + (int)depthBlend) *
+                            (int)ColorGradient.Count + (int)colorGradient) *
+                            (int)ClippingPlane.Count + (int)clippingPlane)
                             ;
                 }
             }
 
             public void ApplyToMaterial(Material mat)
             {
-                mat.SetKeywordEnabled(ShaderKeywords.AlphaAsBlack, BlendingMode_AlphaAsBlack[(int)blendingMode]);
-                mat.SetKeywordEnabled(ShaderKeywords.ColorGradientMatrixLow,  colorGradient == ColorGradient.MatrixLow);
-                mat.SetKeywordEnabled(ShaderKeywords.ColorGradientMatrixHigh, colorGradient == ColorGradient.MatrixHigh);
-                mat.SetKeywordEnabled(ShaderKeywords.DepthBlend, depthBlend == DepthBlend.On);
-                mat.SetKeywordEnabled(ShaderKeywords.Noise3D, noise3D == Noise3D.On);
-                mat.SetKeywordEnabled(ShaderKeywords.OcclusionClippingPlane, dynamicOcclusion == DynamicOcclusion.ClippingPlane);
-                mat.SetKeywordEnabled(ShaderKeywords.OcclusionDepthTexture, dynamicOcclusion == DynamicOcclusion.DepthTexture);
-                mat.SetKeywordEnabled(ShaderKeywords.MeshSkewing, meshSkewing == MeshSkewing.On);
-                mat.SetKeywordEnabled(ShaderKeywords.ShaderAccuracyHigh, shaderAccuracy == ShaderAccuracy.High);
-
-                mat.SetInt(ShaderProperties.BlendSrcFactor, (int)BlendingMode_SrcFactor[(int)blendingMode]);
-                mat.SetInt(ShaderProperties.BlendDstFactor, (int)BlendingMode_DstFactor[(int)blendingMode]);
+                mat.SetKeywordEnabled("VLB_ALPHA_AS_BLACK", BlendingMode_AlphaAsBlack[(int)blendingMode]);
+                mat.SetInt("_BlendSrcFactor", (int)BlendingMode_SrcFactor[(int)blendingMode]);
+                mat.SetInt("_BlendDstFactor", (int)BlendingMode_DstFactor[(int)blendingMode]);
+                mat.SetKeywordEnabled("VLB_COLOR_GRADIENT_MATRIX_LOW", colorGradient == ColorGradient.MatrixLow);
+                mat.SetKeywordEnabled("VLB_COLOR_GRADIENT_MATRIX_HIGH", colorGradient == ColorGradient.MatrixHigh);
+                mat.SetKeywordEnabled("VLB_DEPTH_BLEND", depthBlend == DepthBlend.On);
+                mat.SetKeywordEnabled("VLB_NOISE_3D", noise3D == Noise3D.On);
+                mat.SetKeywordEnabled("VLB_CLIPPING_PLANE", clippingPlane == ClippingPlane.On);
             }
         }
 
-        public static Material NewMaterialTransient(bool gpuInstanced)
+        public static Material NewMaterial(bool gpuInstanced)
         {
-            var material = NewMaterialPersistent(Config.Instance.beamShader, gpuInstanced);
-            if (material)
-            {
-                material.hideFlags = Consts.ProceduralObjectsHideFlags;
-                material.renderQueue = Config.Instance.geometryRenderQueue;
-            }
-            return material;
-        }
-
-        public static Material NewMaterialPersistent(Shader shader, bool gpuInstanced)
-        {
+            var shader = Config.Instance.beamShader;
             if (!shader)
             {
-                Debug.LogError("Invalid VLB Shader. Please try to reset the VLB Config asset or reinstall the plugin.");
+                Debug.LogError("Invalid Beam Shader set in VLB Config");
                 return null;
             }
 
             var material = new Material(shader);
-            BatchingHelper.SetMaterialProperties(material, gpuInstanced);
+            material.hideFlags = Consts.ProceduralObjectsHideFlags;
+            material.renderQueue = Config.Instance.geometryRenderQueue;
+            GpuInstancing.SetMaterialProperties(material, gpuInstanced);
             return material;
         }
 
@@ -177,7 +139,7 @@ namespace VLB
             var mat = group.materials[matID];
             if (mat == null)
             {
-                mat = NewMaterialTransient(gpuInstanced:true);
+                mat = NewMaterial(gpuInstanced:true);
                 if(mat)
                 {
                     group.materials[matID] = mat;

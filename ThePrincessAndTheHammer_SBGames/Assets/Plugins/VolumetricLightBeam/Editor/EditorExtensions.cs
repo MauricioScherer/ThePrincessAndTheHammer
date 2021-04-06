@@ -11,13 +11,6 @@ namespace VLB
             return new GameObject("Volumetric Light Beam", typeof(VolumetricLightBeam));
         }
 
-        public static GameObject NewBeam2D()
-        {
-            var gao = new GameObject("Volumetric Light Beam (2D)", typeof(VolumetricLightBeam));
-            gao.GetComponent<VolumetricLightBeam>().dimensions = Dimensions.Dim2D;
-            return gao;
-        }
-
         public static GameObject NewBeamAndDust()
         {
             return new GameObject("Volumetric Light Beam + Dust", typeof(VolumetricLightBeam), typeof(VolumetricDustParticles));
@@ -40,22 +33,16 @@ namespace VLB
             Selection.activeGameObject = gao;
         }
 
-        [MenuItem("GameObject/Light/Volumetric Beam (3D)", false, 100)]
+        [MenuItem("GameObject/Light/Volumetric Beam", false, 100)]
         public static void Menu_CreateNewBeam()
         {
             OnNewGameObjectCreated(NewBeam());
         }
 
-        [MenuItem("GameObject/Light/Volumetric Beam (3D) and Spotlight", false, 101)]
+        [MenuItem("GameObject/Light/Volumetric Beam and Spotlight", false, 101)]
         public static void Menu_CreateSpotLightAndBeam()
         {
             OnNewGameObjectCreated(NewSpotLightAndBeam());
-        }
-
-        [MenuItem("GameObject/Light/Volumetric Beam (2D)", false, 102)]
-        public static void Menu_CreateNewBeam2D()
-        {
-            OnNewGameObjectCreated(NewBeam2D());
         }
 
         [MenuItem("CONTEXT/Light/Attach a Volumetric Beam")]
@@ -63,10 +50,7 @@ namespace VLB
         {
             var light = menuCommand.context as Light;
             if (light)
-            {
-                if (light.GetComponent<VolumetricLightBeam>() == null)
-                    Undo.AddComponent<VolumetricLightBeam>(light.gameObject);
-            }
+                light.gameObject.AddComponent<VolumetricLightBeam>();
         }
 
         [MenuItem("CONTEXT/VolumetricLightBeam/Documentation")]
@@ -75,11 +59,8 @@ namespace VLB
         [MenuItem("CONTEXT/VolumetricDustParticles/Documentation")]
         public static void Menu_DustParticles_Doc(MenuCommand menuCommand) { Application.OpenURL(Consts.HelpUrlDustParticles); }
 
-        [MenuItem("CONTEXT/DynamicOcclusionRaycasting/Documentation")]
-        public static void Menu_DynamicOcclusionRaycasting_Doc(MenuCommand menuCommand) { Application.OpenURL(Consts.HelpUrlDynamicOcclusionRaycasting); }
-
-        [MenuItem("CONTEXT/DynamicOcclusionDepthBuffer/Documentation")]
-        public static void Menu_DynamicOcclusionDepthBuffer_Doc(MenuCommand menuCommand) { Application.OpenURL(Consts.HelpUrlDynamicOcclusionDepthBuffer); }
+        [MenuItem("CONTEXT/DynamicOcclusion/Documentation")]
+        public static void Menu_DynamicOcclusion_Doc(MenuCommand menuCommand) { Application.OpenURL(Consts.HelpUrlDynamicOcclusion); }
 
         [MenuItem("CONTEXT/TriggerZone/Documentation")]
         public static void Menu_TriggerZone_Doc(MenuCommand menuCommand) { Application.OpenURL(Consts.HelpUrlTriggerZone); }
@@ -89,34 +70,32 @@ namespace VLB
 
         [MenuItem("CONTEXT/VolumetricLightBeam/Open Global Config")]
         [MenuItem("CONTEXT/VolumetricDustParticles/Open Global Config")]
-        [MenuItem("CONTEXT/DynamicOcclusionRaycasting/Open Global Config")]
-        [MenuItem("CONTEXT/DynamicOcclusionDepthBuffer/Open Global Config")]
+        [MenuItem("CONTEXT/DynamicOcclusion/Open Global Config")]
         [MenuItem("CONTEXT/TriggerZone/Open Global Config")]
         public static void Menu_Beam_Config(MenuCommand menuCommand) { Config.EditorSelectInstance(); }
 
         [MenuItem("CONTEXT/VolumetricLightBeam/Add Dust Particles")]
-        public static void Menu_AddDustParticles(MenuCommand menuCommand) { AddComponentFromEditor<VolumetricDustParticles>(menuCommand.context as VolumetricLightBeam); }
+        public static void Menu_AddDustParticles(MenuCommand menuCommand)
+        {
+            var vlb = menuCommand.context as VolumetricLightBeam;
+            if (vlb)
+                vlb.gameObject.AddComponent<VolumetricDustParticles>();
+        }
 
-        [MenuItem("CONTEXT/VolumetricLightBeam/Add Dynamic Occlusion (Raycasting)")]
-        public static void Menu_AddDynamicOcclusion_Raycasting(MenuCommand menuCommand) { AddComponentFromEditor<DynamicOcclusionRaycasting>(menuCommand.context as VolumetricLightBeam); }
-
-        [MenuItem("CONTEXT/VolumetricLightBeam/Add Dynamic Occlusion (Depth Buffer)")]
-        public static void Menu_AddDynamicOcclusion_DepthBuffer(MenuCommand menuCommand) { AddComponentFromEditor<DynamicOcclusionDepthBuffer>(menuCommand.context as VolumetricLightBeam); }
+        [MenuItem("CONTEXT/VolumetricLightBeam/Add Dynamic Occlusion")]
+        public static void Menu_AddDynamicOcclusion(MenuCommand menuCommand)
+        {
+            var vlb = menuCommand.context as VolumetricLightBeam;
+            if (vlb)
+                vlb.gameObject.AddComponent<DynamicOcclusion>();
+        }
 
         [MenuItem("CONTEXT/VolumetricLightBeam/Add Trigger Zone")]
-        public static void Menu_AddTriggerZone(MenuCommand menuCommand) { AddComponentFromEditor<TriggerZone>(menuCommand.context as VolumetricLightBeam); }
-
-        public static void AddComponentFromEditor<TComp>(VolumetricLightBeam self) where TComp : Component
+        public static void Menu_AddTriggerZone(MenuCommand menuCommand)
         {
-            if (self)
-            {
-                if (self.GetComponent<TComp>() == null)
-                {
-                    var comp = Undo.AddComponent<TComp>(self.gameObject);
-
-                    if (comp is DynamicOcclusionRaycasting) (comp as DynamicOcclusionRaycasting).dimensions = self.dimensions;
-                }
-            }
+            var vlb = menuCommand.context as VolumetricLightBeam;
+            if (vlb)
+                vlb.gameObject.AddComponent<TriggerZone>();
         }
 
         [MenuItem("Edit/Volumetric Light Beam Config", false, 20001)]
@@ -165,7 +144,7 @@ namespace VLB
         /// <param name="rightValue">The value at the right end of the slider.</param>
         /// <param name="convIn">Conversion applied on the SerializedProperty to get the Slider value</param>
         /// <param name="convOut">Conversion applied on the Slider value to get the SerializedProperty</param>
-        public static bool FloatSlider(
+        public static void FloatSlider(
             this SerializedProperty prop,
             GUIContent label,
             float leftValue, float rightValue,
@@ -183,14 +162,10 @@ namespace VLB
                 EditorGUI.showMixedValue = false;
             }
             if (EditorGUI.EndChangeCheck())
-            {
                 prop.floatValue = convOut(floatValue);
-                return true;
-            }
-            return false;
         }
 
-        public static bool FloatSlider(
+        public static void FloatSlider(
             this SerializedProperty prop,
             GUIContent label,
             float leftValue, float rightValue,
@@ -206,11 +181,7 @@ namespace VLB
                 EditorGUI.showMixedValue = false;
             }
             if (EditorGUI.EndChangeCheck())
-            {
                 prop.floatValue = floatValue;
-                return true;
-            }
-            return false;
         }
 /*
         public static void ToggleFromLight(this SerializedProperty prop)

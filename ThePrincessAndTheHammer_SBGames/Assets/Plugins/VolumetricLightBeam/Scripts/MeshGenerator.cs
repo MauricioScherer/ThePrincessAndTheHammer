@@ -205,23 +205,17 @@ namespace VLB
                 }
             }
 
-            mesh.bounds = ComputeBounds(lengthZ, radiusStart, radiusEnd);
+            var bounds = new Bounds(
+                new Vector3(0, 0, lengthZ * 0.5f),
+                new Vector3(Mathf.Max(radiusStart, radiusEnd) * 2, Mathf.Max(radiusStart, radiusEnd) * 2, lengthZ)
+                );
+            mesh.bounds = bounds;
 
             Debug.Assert(mesh.vertexCount == GetVertexCount(numSides, numSegments, genCap, doubleSided));
             Debug.Assert(mesh.triangles.Length == GetIndicesCount(numSides, numSegments, genCap, doubleSided));
 
             return mesh;
         }
-
-        public static Bounds ComputeBounds(float lengthZ, float radiusStart, float radiusEnd)
-        {
-            float maxDiameter = Mathf.Max(radiusStart, radiusEnd) * 2;
-            return new Bounds(
-                new Vector3(0, 0, lengthZ * 0.5f),
-                new Vector3(maxDiameter, maxDiameter, lengthZ)
-                );
-        }
-
 
         public static int GetVertexCount(int numSides, int numSegments, bool geomCap, bool doubleSided)
         {
@@ -247,12 +241,12 @@ namespace VLB
 
         public static int GetSharedMeshVertexCount()
         {
-            return GetVertexCount(Config.Instance.sharedMeshSides, Config.Instance.sharedMeshSegments, true, Config.Instance.requiresDoubleSidedMesh);
+            return GetVertexCount(Config.Instance.sharedMeshSides, Config.Instance.sharedMeshSegments, true, Config.Instance.useSinglePassShader);
         }
 
         public static int GetSharedMeshIndicesCount()
         {
-            return GetIndicesCount(Config.Instance.sharedMeshSides, Config.Instance.sharedMeshSegments, true, Config.Instance.requiresDoubleSidedMesh);
+            return GetIndicesCount(Config.Instance.sharedMeshSides, Config.Instance.sharedMeshSegments, true, Config.Instance.useSinglePassShader);
         }
     }
 }

@@ -8,15 +8,13 @@ namespace VLB
     public class ConfigEditor : EditorCommon
     {
         SerializedProperty geometryOverrideLayer, geometryLayerID, geometryTag, geometryRenderQueue, renderPipeline, renderingMode;
+        SerializedProperty beamShader1Pass, beamShader2Pass;
         SerializedProperty sharedMeshSides, sharedMeshSegments;
         SerializedProperty globalNoiseScale, globalNoiseVelocity;
         SerializedProperty fadeOutCameraTag;
         SerializedProperty noise3DData, noise3DSize;
         SerializedProperty dustParticlesPrefab;
-        SerializedProperty ditheringFactor, ditheringNoiseTexture;
-        SerializedProperty featureEnabledColorGradient, featureEnabledDepthBlend, featureEnabledNoise3D, featureEnabledDynamicOcclusion, featureEnabledMeshSkewing, featureEnabledShaderAccuracyHigh;
         bool isRenderQueueCustom = false;
-        Config m_TargetConfig = null;
 
         protected override void OnEnable()
         {
@@ -27,8 +25,11 @@ namespace VLB
             geometryTag = FindProperty((Config x) => x.geometryTag);
 
             geometryRenderQueue = FindProperty((Config x) => x.geometryRenderQueue);
-            renderPipeline = serializedObject.FindProperty("_RenderPipeline");
-            renderingMode = serializedObject.FindProperty("_RenderingMode");
+            renderPipeline = FindProperty((Config x) => x.renderPipeline);
+            renderingMode = FindProperty((Config x) => x.renderingMode);
+
+            beamShader1Pass = serializedObject.FindProperty("beamShader1Pass");
+            beamShader2Pass = serializedObject.FindProperty("beamShader2Pass");
 
             sharedMeshSides = FindProperty((Config x) => x.sharedMeshSides);
             sharedMeshSegments = FindProperty((Config x) => x.sharedMeshSegments);
@@ -43,21 +44,9 @@ namespace VLB
 
             dustParticlesPrefab = FindProperty((Config x) => x.dustParticlesPrefab);
 
-            ditheringFactor = FindProperty((Config x) => x.ditheringFactor);
-            ditheringNoiseTexture = FindProperty((Config x) => x.ditheringNoiseTexture);
-
-            featureEnabledColorGradient = FindProperty((Config x) => x.featureEnabledColorGradient);
-            featureEnabledDepthBlend = FindProperty((Config x) => x.featureEnabledDepthBlend);
-            featureEnabledNoise3D = FindProperty((Config x) => x.featureEnabledNoise3D);
-            featureEnabledDynamicOcclusion = FindProperty((Config x) => x.featureEnabledDynamicOcclusion);
-            featureEnabledMeshSkewing = FindProperty((Config x) => x.featureEnabledMeshSkewing);
-            featureEnabledShaderAccuracyHigh = FindProperty((Config x) => x.featureEnabledShaderAccuracyHigh);
-
             RenderQueueGUIInit();
 
             Noise3D.LoadIfNeeded(); // Try to load Noise3D, maybe for the 1st time
-
-            m_TargetConfig = this.target as Config;
         }
 
         void RenderQueueGUIInit()
@@ -78,28 +67,21 @@ namespace VLB
             using (new EditorGUILayout.HorizontalScope())
             {
                 EditorGUI.BeginChangeCheck();
-                {
-                    EditorGUI.BeginChangeCheck();
-                    RenderQueue rq = isRenderQueueCustom ? RenderQueue.Custom : (RenderQueue)geometryRenderQueue.intValue;
-                    rq = (RenderQueue)EditorGUILayout.EnumPopup(EditorStrings.Config.GeometryRenderQueue, rq);
-                    if (EditorGUI.EndChangeCheck())
-                    {
-                        isRenderQueueCustom = (rq == RenderQueue.Custom);
-
-                        if (!isRenderQueueCustom)
-                            geometryRenderQueue.intValue = (int)rq;
-                    }
-
-                    EditorGUI.BeginDisabledGroup(!isRenderQueueCustom);
-                    {
-                        geometryRenderQueue.intValue = EditorGUILayout.IntField(geometryRenderQueue.intValue, GUILayout.MaxWidth(65.0f));
-                    }
-                    EditorGUI.EndDisabledGroup();
-                }
+                RenderQueue rq = isRenderQueueCustom ? RenderQueue.Custom : (RenderQueue)geometryRenderQueue.intValue;
+                rq = (RenderQueue)EditorGUILayout.EnumPopup(EditorStrings.ConfigGeometryRenderQueue, rq);
                 if (EditorGUI.EndChangeCheck())
                 {
-                    SetDirty(DirtyFlags.AllBeamGeom);
+                    isRenderQueueCustom = (rq == RenderQueue.Custom);
+
+                    if (!isRenderQueueCustom)
+                        geometryRenderQueue.intValue = (int)rq;
                 }
+
+                EditorGUI.BeginDisabledGroup(!isRenderQueueCustom);
+                {
+                    geometryRenderQueue.intValue = EditorGUILayout.IntField(geometryRenderQueue.intValue, GUILayout.MaxWidth(65.0f));
+                }
+                EditorGUI.EndDisabledGroup();
             }
         }
 
@@ -108,281 +90,193 @@ namespace VLB
             GUILayout.BeginVertical("In BigTitle");
             EditorGUILayout.Separator();
 
-            var title = string.Format("Volumetric Light Beam - Plugin Configuration");
+            var title = string.Format("Volumetric Light Beam - Plugin Configuration ({0})", (IsOverriddenInstance() ? "Override" : "Default"));
             EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
             EditorGUILayout.LabelField(string.Format("Current Version: {0}", Version.Current), EditorStyles.miniBoldLabel);
             EditorGUILayout.Separator();
-            GUILayout.EndVertical();
+		    GUILayout.EndVertical();
         }
 
-        void OnAddConfigPerPlatform(object platform)
+        void ReimportShaders()
         {
-            var p = (RuntimePlatform)platform;
-            var clone = Object.Instantiate(m_TargetConfig);
-            Debug.Assert(clone);
-            var path = AssetDatabase.GetAssetPath(m_TargetConfig).Replace(m_TargetConfig.name + ".asset", "");
-            ConfigOverride.CreateAsset(clone, path + ConfigOverride.kAssetName + p.ToString() + ".asset");
-            Selection.activeObject = clone;
+            ReimportAsset(beamShader1Pass.objectReferenceValue);
+            ReimportAsset(beamShader2Pass.objectReferenceValue);
         }
 
-        [System.Flags]
-        enum DirtyFlags
+        void ReimportAsset(Object obj)
         {
-            Target = 1 << 1,
-            Shader = 1 << 2,
-            Noise = 1 << 3,
-            GlobalMesh = 1 << 4,
-            AllBeamGeom = 1 << 5,
-            AllMeshes = 1 << 6
-        }
-
-        void SetDirty(DirtyFlags flags)
-        {
-            if (m_IsUsedInstance)
+            if (obj)
             {
-                if (flags.HasFlag(DirtyFlags.Target)) EditorUtility.SetDirty(target);
-                if (flags.HasFlag(DirtyFlags.Shader)) m_NeedToRefreshShader = true;
-                if (flags.HasFlag(DirtyFlags.Noise)) m_NeedToReloadNoise = true;
-                if (flags.HasFlag(DirtyFlags.GlobalMesh)) GlobalMesh.Destroy();
-                if (flags.HasFlag(DirtyFlags.AllBeamGeom)) VolumetricLightBeam._EditorSetAllBeamGeomDirty();
-                if (flags.HasFlag(DirtyFlags.AllMeshes)) VolumetricLightBeam._EditorSetAllMeshesDirty();
+                var path = AssetDatabase.GetAssetPath(beamShader1Pass.objectReferenceValue);
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.Default);
             }
         }
 
-        bool m_NeedToReloadNoise = false;
-        bool m_NeedToRefreshShader = false;
-        bool m_IsUsedInstance = false;
+        protected virtual bool IsOverriddenInstance() { return false; }
+        bool IsDisabled() { return !IsOverriddenInstance(); }
 
         public override void OnInspectorGUI()
         {
             base.OnInspectorGUI();
+            bool reloadNoise = false;
 
-            Debug.Assert(m_TargetConfig != null);
+            bool isUsedInstance = (Object)Config.Instance == this.target;
 
-            m_NeedToReloadNoise = false;
-            m_NeedToRefreshShader = false;
-            m_IsUsedInstance = m_TargetConfig.IsCurrentlyUsedInstance();
-
-            // Config per plaftorm
-#if UNITY_2018_1_OR_NEWER
+            if (!IsOverriddenInstance())
             {
-                bool hasValidName = m_TargetConfig.HasValidAssetName();
-                bool isCurrentPlatformSuffix = m_TargetConfig.GetAssetSuffix() == PlatformHelper.GetCurrentPlatformSuffix();
-
-                var platformSuffix = m_TargetConfig.GetAssetSuffix();
-                string platformStr = "Default Config asset";
-                if(!string.IsNullOrEmpty(platformSuffix))
-                    platformStr = string.Format("Config asset for platform '{0}'", m_TargetConfig.GetAssetSuffix());
-                if (!hasValidName)
-                    platformStr += " (INVALID)";
-                EditorGUILayout.LabelField(platformStr, EditorStyles.boldLabel);
-
-                if (GUILayout.Button(EditorStrings.Beam.ButtonCreateOverridePerPlatform, EditorStyles.miniButton))
+                if (isUsedInstance)
                 {
-                    var menu = new GenericMenu();
-                    foreach (var platform in System.Enum.GetValues(typeof(RuntimePlatform)))
-                        menu.AddItem(new GUIContent(platform.ToString()), false, OnAddConfigPerPlatform, platform);
-                    menu.ShowAsContext();
+                    if (GUILayout.Button(EditorStrings.ConfigCreateOverrideAsset))
+                        ConfigOverrideEditor.CreateAsset();
                 }
-
-                if (!hasValidName)
+                else
                 {
-                    EditorGUILayout.Separator();
-                    EditorGUILayout.HelpBox(EditorStrings.Config.InvalidPlatformOverride, MessageType.Error);
-                    ButtonOpenConfig();
+                    ButtonOpenConfig(/*miniButton*/ false);
                 }
-                else if (!m_IsUsedInstance)
-                {
-                    EditorGUILayout.Separator();
-
-                    if (isCurrentPlatformSuffix)
-                        EditorGUILayout.HelpBox(EditorStrings.Config.WrongAssetLocation, MessageType.Error);
-                    else
-                        EditorGUILayout.HelpBox(EditorStrings.Config.NotCurrentAssetInUse, MessageType.Warning);
-
-                    ButtonOpenConfig();
-                }
-
                 DrawLineSeparator();
             }
-#endif
 
+            if (IsOverriddenInstance() && !isUsedInstance)
             {
-                EditorGUI.BeginChangeCheck();
+                EditorGUILayout.HelpBox(EditorStrings.ConfigMultipleAssets, MessageType.Error);
+                EditorGUILayout.Separator();
+                ButtonOpenConfig();
+            }
+            else
+            {
+                EditorGUI.BeginDisabledGroup(IsDisabled());
                 {
-                    if (FoldableHeader.Begin(this, EditorStrings.Config.HeaderBeamGeometry))
+                    EditorGUI.BeginChangeCheck();
                     {
-                        using (new EditorGUILayout.HorizontalScope())
+                        if (HeaderFoldableBegin("Beam Geometry"))
                         {
-                            geometryOverrideLayer.boolValue = EditorGUILayout.Toggle(EditorStrings.Config.GeometryOverrideLayer, geometryOverrideLayer.boolValue);
-                            using (new EditorGUI.DisabledGroupScope(!geometryOverrideLayer.boolValue))
+                            using (new EditorGUILayout.HorizontalScope())
                             {
-                                geometryLayerID.intValue = EditorGUILayout.LayerField(geometryLayerID.intValue);
+                                geometryOverrideLayer.boolValue = EditorGUILayout.Toggle(EditorStrings.ConfigGeometryOverrideLayer, geometryOverrideLayer.boolValue);
+                                using (new EditorGUI.DisabledGroupScope(!geometryOverrideLayer.boolValue))
+                                {
+                                    geometryLayerID.intValue = EditorGUILayout.LayerField(geometryLayerID.intValue);
+                                }
                             }
+
+                            geometryTag.stringValue = EditorGUILayout.TagField(EditorStrings.ConfigGeometryTag, geometryTag.stringValue);
                         }
+                        HeaderFoldableEnd();
 
-                        geometryTag.stringValue = EditorGUILayout.TagField(EditorStrings.Config.GeometryTag, geometryTag.stringValue);
-                    }
-                    FoldableHeader.End();
-
-                    if (FoldableHeader.Begin(this, EditorStrings.Config.HeaderRendering))
-                    {
-                        RenderQueueGUIDraw();
-
-                        if (BeamGeometry.isCustomRenderPipelineSupported)
+                        if (HeaderFoldableBegin("Rendering"))
                         {
+                            RenderQueueGUIDraw();
+
+                            if (BeamGeometry.isCustomRenderPipelineSupported)
+                            {
+                                EditorGUI.BeginChangeCheck();
+                                {
+                                    renderPipeline.CustomEnum<RenderPipeline>(EditorStrings.ConfigGeometryRenderPipeline, EditorStrings.ConfigGeometryRenderPipelineEnumDescriptions);
+                                }
+                                if (EditorGUI.EndChangeCheck())
+                                {
+                                    Config.OnRenderPipelineChanged((RenderPipeline)renderPipeline.enumValueIndex);
+                                    VolumetricLightBeam._EditorSetAllBeamGeomDirty(); // need to fully reset the BeamGeom to update the shader
+                                    ReimportShaders();
+                                }
+                            }
+
                             EditorGUI.BeginChangeCheck();
                             {
-                                renderPipeline.CustomEnum<RenderPipeline>(EditorStrings.Config.GeometryRenderPipeline, EditorStrings.Config.GeometryRenderPipelineEnumDescriptions);
+                                EditorGUILayout.PropertyField(renderingMode, EditorStrings.ConfigGeometryRenderingMode);
+
+                                if (renderPipeline.enumValueIndex == (int)RenderPipeline.SRP_4_0_0_or_higher && renderingMode.enumValueIndex == (int)RenderingMode.MultiPass)
+                                    EditorGUILayout.HelpBox(EditorStrings.ConfigSrpAndMultiPassNoCompatible, MessageType.Error);
+
+#pragma warning disable 0162 // warning CS0162: Unreachable code detected
+                                if (renderingMode.enumValueIndex == (int)RenderingMode.GPUInstancing && !GpuInstancing.isSupported)
+                                    EditorGUILayout.HelpBox(EditorStrings.ConfigGeometryGpuInstancingNotSupported, MessageType.Warning);
+#pragma warning restore 0162
                             }
                             if (EditorGUI.EndChangeCheck())
                             {
-                                SetDirty(DirtyFlags.AllBeamGeom | DirtyFlags.Shader); // need to fully reset the BeamGeom to update the shader
+                                VolumetricLightBeam._EditorSetAllBeamGeomDirty(); // need to fully reset the BeamGeom to update the shader
+                                GlobalMesh.Destroy();
+                                ReimportShaders();
                             }
                         }
+                        HeaderFoldableEnd();
+                    }
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        VolumetricLightBeam._EditorSetAllMeshesDirty();
+                    }
 
-                        if (m_TargetConfig.hasRenderPipelineMismatch)
-                            EditorGUILayout.HelpBox(EditorStrings.Config.ErrorRenderPipelineMismatch, MessageType.Error);
-
+                    if (HeaderFoldableBegin("Shared Mesh"))
+                    {
                         EditorGUI.BeginChangeCheck();
-                        {
-                            EditorGUILayout.PropertyField(renderingMode, EditorStrings.Config.GeometryRenderingMode);
-
-                            if (renderPipeline.enumValueIndex == (int)RenderPipeline.BuiltIn)
-                            {
-                                if (renderingMode.enumValueIndex == (int)RenderingMode.SRPBatcher)
-                                    EditorGUILayout.HelpBox(EditorStrings.Config.ErrorSrpBatcherOnlyCompatibleWithSrp, MessageType.Error);
-                            }
-                            else
-                            {
-                                if (renderingMode.enumValueIndex == (int)RenderingMode.SRPBatcher && SRPHelper.renderPipelineType == SRPHelper.RenderPipeline.LWRP)
-                                    EditorGUILayout.HelpBox(EditorStrings.Config.ErrorSrpBatcherNotCompatibleWithLWRP, MessageType.Error);
-
-                                if (renderingMode.enumValueIndex == (int)RenderingMode.MultiPass)
-                                    EditorGUILayout.HelpBox(EditorStrings.Config.ErrorSrpAndMultiPassNotCompatible, MessageType.Error);
-                            }
-
-#pragma warning disable 0162 // warning CS0162: Unreachable code detected
-                            if (renderingMode.enumValueIndex == (int)RenderingMode.GPUInstancing && !BatchingHelper.isGpuInstancingSupported)
-                                EditorGUILayout.HelpBox(EditorStrings.Config.ErrorGeometryGpuInstancingNotSupported, MessageType.Error);
-#pragma warning restore 0162
-                        }
+                        EditorGUILayout.PropertyField(sharedMeshSides, EditorStrings.ConfigSharedMeshSides);
+                        EditorGUILayout.PropertyField(sharedMeshSegments, EditorStrings.ConfigSharedMeshSegments);
                         if (EditorGUI.EndChangeCheck())
                         {
-                            SetDirty(DirtyFlags.AllBeamGeom | DirtyFlags.GlobalMesh | DirtyFlags.Shader); // need to fully reset the BeamGeom to update the shader
+                            GlobalMesh.Destroy();
+                            VolumetricLightBeam._EditorSetAllMeshesDirty();
                         }
 
-                        if (m_TargetConfig.beamShader == null)
-                            EditorGUILayout.HelpBox(EditorStrings.Config.GetErrorInvalidShader(), MessageType.Error);
+                        var meshInfo = "These properties will change the mesh tessellation of each Volumetric Light Beam with 'Shared' MeshType.\nAdjust them carefully since they could impact performance.";
+                        meshInfo += string.Format("\nShared Mesh stats: {0} vertices, {1} triangles", MeshGenerator.GetSharedMeshVertexCount(), MeshGenerator.GetSharedMeshIndicesCount() / 3);
+                        EditorGUILayout.HelpBox(meshInfo, MessageType.Info);
+                    }
+                    HeaderFoldableEnd();
 
-                        if (ditheringFactor.FloatSlider(EditorStrings.Config.DitheringFactor, 0.0f, 1.0f))
+                    if (HeaderFoldableBegin("Global 3D Noise"))
+                    {
+                        EditorGUILayout.PropertyField(globalNoiseScale, EditorStrings.ConfigGlobalNoiseScale);
+                        EditorGUILayout.PropertyField(globalNoiseVelocity, EditorStrings.ConfigGlobalNoiseVelocity);
+                    }
+                    HeaderFoldableEnd();
+
+                    if (HeaderFoldableBegin("Camera to compute Fade Out"))
+                    {
+                        EditorGUI.BeginChangeCheck();
+                        fadeOutCameraTag.stringValue = EditorGUILayout.TagField(EditorStrings.ConfigFadeOutCameraTag, fadeOutCameraTag.stringValue);
+                        if (EditorGUI.EndChangeCheck() && Application.isPlaying)
+                            (target as Config).ForceUpdateFadeOutCamera();
+                    }
+                    HeaderFoldableEnd();
+
+                    if (HeaderFoldableBegin("Internal Data (do not change)"))
+                    {
+                        EditorGUILayout.PropertyField(beamShader1Pass, EditorStrings.ConfigBeamShader1Pass);
+                        EditorGUILayout.PropertyField(beamShader2Pass, EditorStrings.ConfigBeamShader2Pass);
+                        EditorGUILayout.PropertyField(dustParticlesPrefab, EditorStrings.ConfigDustParticlesPrefab);
+
+                        EditorGUI.BeginChangeCheck();
+                        EditorGUILayout.PropertyField(noise3DData, EditorStrings.ConfigNoise3DData);
+                        EditorGUILayout.PropertyField(noise3DSize, EditorStrings.ConfigNoise3DSize);
+                        if (EditorGUI.EndChangeCheck())
+                            reloadNoise = true;
+
+                        if (Noise3D.isSupported && !Noise3D.isProperlyLoaded)
+                            EditorGUILayout.HelpBox(EditorStrings.HelpNoiseLoadingFailed, MessageType.Error);
+                    }
+                    HeaderFoldableEnd();
+
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        if (GUILayout.Button(EditorStrings.ConfigOpenDocumentation, EditorStyles.miniButton))
                         {
-                            SetDirty(DirtyFlags.Shader);
+                            UnityEditor.Help.BrowseURL(Consts.HelpUrlConfig);
+                        }
+
+                        if (GUILayout.Button(EditorStrings.ConfigResetToDefaultButton, EditorStyles.miniButton))
+                        {
+                            UnityEditor.Undo.RecordObject(target, "Reset Config Properties");
+                            (target as Config).Reset();
                         }
                     }
-                    FoldableHeader.End();
                 }
-                if (EditorGUI.EndChangeCheck())
-                {
-                    VolumetricLightBeam._EditorSetAllMeshesDirty();
-                }
-
-                if (FoldableHeader.Begin(this, EditorStrings.Config.HeaderSharedMesh))
-                {
-                    EditorGUI.BeginChangeCheck();
-                    EditorGUILayout.PropertyField(sharedMeshSides, EditorStrings.Config.SharedMeshSides);
-                    EditorGUILayout.PropertyField(sharedMeshSegments, EditorStrings.Config.SharedMeshSegments);
-                    if (EditorGUI.EndChangeCheck())
-                    {
-                        SetDirty(DirtyFlags.GlobalMesh | DirtyFlags.AllMeshes);
-                    }
-
-                    var meshInfo = "These properties will change the mesh tessellation of each Volumetric Light Beam with 'Shared' MeshType.\nAdjust them carefully since they could impact performance.";
-                    meshInfo += string.Format("\nShared Mesh stats: {0} vertices, {1} triangles", MeshGenerator.GetSharedMeshVertexCount(), MeshGenerator.GetSharedMeshIndicesCount() / 3);
-                    EditorGUILayout.HelpBox(meshInfo, MessageType.Info);
-                }
-                FoldableHeader.End();
-
-                if (FoldableHeader.Begin(this, EditorStrings.Config.HeaderGlobal3DNoise))
-                {
-                    EditorGUILayout.PropertyField(globalNoiseScale, EditorStrings.Config.GlobalNoiseScale);
-                    EditorGUILayout.PropertyField(globalNoiseVelocity, EditorStrings.Config.GlobalNoiseVelocity);
-                }
-                FoldableHeader.End();
-
-                if (FoldableHeader.Begin(this, EditorStrings.Config.HeaderFadeOutCamera))
-                {
-                    EditorGUI.BeginChangeCheck();
-                    fadeOutCameraTag.stringValue = EditorGUILayout.TagField(EditorStrings.Config.FadeOutCameraTag, fadeOutCameraTag.stringValue);
-                    if (EditorGUI.EndChangeCheck() && Application.isPlaying)
-                        m_TargetConfig.ForceUpdateFadeOutCamera();
-                }
-                FoldableHeader.End();
-
-                if (FoldableHeader.Begin(this, EditorStrings.Config.HeaderFeaturesEnabled))
-                {
-                    EditorGUI.BeginChangeCheck();
-                    {
-                        EditorGUILayout.PropertyField(featureEnabledColorGradient, EditorStrings.Config.FeatureEnabledColorGradient);
-                        EditorGUILayout.PropertyField(featureEnabledDepthBlend, EditorStrings.Config.FeatureEnabledDepthBlend);
-                        EditorGUILayout.PropertyField(featureEnabledNoise3D, EditorStrings.Config.FeatureEnabledNoise3D);
-                        EditorGUILayout.PropertyField(featureEnabledDynamicOcclusion, EditorStrings.Config.FeatureEnabledDynamicOcclusion);
-                        EditorGUILayout.PropertyField(featureEnabledMeshSkewing, EditorStrings.Config.FeatureEnabledMeshSkewing);
-                        EditorGUILayout.PropertyField(featureEnabledShaderAccuracyHigh, EditorStrings.Config.FeatureEnabledShaderAccuracyHigh);
-                    }
-                    if (EditorGUI.EndChangeCheck())
-                    {
-                        SetDirty(DirtyFlags.Shader | DirtyFlags.AllBeamGeom);
-                    }
-                }
-                FoldableHeader.End();
-
-                if (FoldableHeader.Begin(this, EditorStrings.Config.HeaderInternalData))
-                {
-                    EditorGUILayout.PropertyField(dustParticlesPrefab, EditorStrings.Config.DustParticlesPrefab);
-
-                    EditorGUILayout.PropertyField(ditheringNoiseTexture, EditorStrings.Config.DitheringNoiseTexture);
-
-                    EditorGUI.BeginChangeCheck();
-                    EditorGUILayout.PropertyField(noise3DData, EditorStrings.Config.Noise3DData);
-                    EditorGUILayout.PropertyField(noise3DSize, EditorStrings.Config.Noise3DSize);
-                    if (EditorGUI.EndChangeCheck())
-                        SetDirty(DirtyFlags.Noise);
-
-                    if (Noise3D.isSupported && !Noise3D.isProperlyLoaded)
-                        EditorGUILayout.HelpBox(EditorStrings.Common.HelpNoiseLoadingFailed, MessageType.Error);
-                }
-                FoldableHeader.End();
-
-                if (GUILayout.Button(EditorStrings.Config.OpenDocumentation, EditorStyles.miniButton))
-                {
-                    UnityEditor.Help.BrowseURL(Consts.HelpUrlConfig);
-                }
-
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    if (GUILayout.Button(EditorStrings.Config.ResetToDefaultButton, EditorStyles.miniButton))
-                    {
-                        UnityEditor.Undo.RecordObject(target, "Reset Config Properties");
-                        m_TargetConfig.Reset();
-                        SetDirty(DirtyFlags.Target | DirtyFlags.Noise);
-                    }
-
-                    if (GUILayout.Button(EditorStrings.Config.ResetInternalDataButton, EditorStyles.miniButton))
-                    {
-                        UnityEditor.Undo.RecordObject(target, "Reset Internal Data");
-                        m_TargetConfig.ResetInternalData();
-                        SetDirty(DirtyFlags.Target | DirtyFlags.Noise);
-                    }
-                }
+                EditorGUI.EndDisabledGroup();
             }
 
             serializedObject.ApplyModifiedProperties();
 
-            if (m_NeedToRefreshShader)
-                m_TargetConfig.RefreshShader(Config.RefreshShaderFlags.All); // need to be done AFTER ApplyModifiedProperties
-
-            if (m_NeedToReloadNoise)
+            if (reloadNoise)
                 Noise3D._EditorForceReloadData(); // Should be called AFTER ApplyModifiedProperties so the Config instance has the proper values when reloading data
         }
     }
